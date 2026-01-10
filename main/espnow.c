@@ -18,6 +18,7 @@ static const char* TAG = "ESPNOW";
 #define NVS_NAMESPACE "espnow"
 
 void wifi_init(void) {
+  ESP_LOGI(TAG, "Initialisation WiFi...");
   ESP_ERROR_CHECK(esp_netif_init());
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
   ESP_ERROR_CHECK(esp_wifi_init(&cfg));
@@ -36,7 +37,7 @@ void wifi_init(void) {
 
 void on_data_sent(const esp_now_send_info_t* info,
                   esp_now_send_status_t status) {
-  ESP_LOGI(TAG, "ESP-NOW send: %s",
+  ESP_LOGI(TAG, "Message envoyé: %s",
            status == ESP_NOW_SEND_SUCCESS ? "OK" : "FAIL");
 }
 
@@ -48,14 +49,14 @@ void on_data_recv(const esp_now_recv_info_t* info, const uint8_t* data,
   memcpy(&msg, data, sizeof(msg));
 
   if (msg.uid != get_UID() && msg.uid != 0xFFFFFFFF) return;
-  /*if (msg.type != 1) {
-    set_registered_in_espnow(true);
-  }*/
+
+  ESP_LOGI(TAG, "Message reçu: type=%d, sleep_us=%lld", msg.type, msg.sleep_us);
 
   sleep_us = msg.sleep_us;
 }
 
 void espnow_init() {
+  ESP_LOGI(TAG, "Initialisation ESP-NOW");
   ESP_ERROR_CHECK(esp_now_init());
   ESP_ERROR_CHECK(esp_now_register_send_cb(on_data_sent));
   ESP_ERROR_CHECK(esp_now_register_recv_cb(on_data_recv));
@@ -70,6 +71,7 @@ void espnow_init() {
 }
 
 void wait_sync(const int64_t* sleep_us_ptr) {
+  ESP_LOGI(TAG, "Attente de synchronisation...");
   sleep_us = *sleep_us_ptr;
   int64_t start = esp_timer_get_time();
   while (sleep_us < 0 && (esp_timer_get_time() - start) < MAX_WAIT_MS * 1000) {
@@ -80,6 +82,7 @@ void wait_sync(const int64_t* sleep_us_ptr) {
 }
 
 void send_data_tdma(client_data_t* msg) {
+  ESP_LOGI(TAG, "Envoi des données en TDMA...");
   int slot = get_UID() % NB_SLOTS;
   vTaskDelay(pdMS_TO_TICKS(slot * SLOT_MS));
   esp_now_send(NULL, (uint8_t*)msg, sizeof(*msg));
