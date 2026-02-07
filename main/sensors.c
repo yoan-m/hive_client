@@ -190,6 +190,7 @@ void init_dip_switches(void) {
 
 void init_sensors(void) {
   ESP_LOGI(TAG, "Initialisation des capteurs...");
+
   init_deep_sleep_pin();
 
   init_led_pin();
@@ -211,6 +212,10 @@ void init_sensors(void) {
  * ========================= */
 
 float read_temperature(void) {
+  if (!ds18b20) {
+    ESP_LOGE(TAG, "DS18B20 non initialisé");
+    return 0.0;
+  }
   ESP_ERROR_CHECK(ds18b20_trigger_temperature_conversion(ds18b20));
   // vTaskDelay(pdMS_TO_TICKS(800));
 
@@ -266,10 +271,21 @@ void disable_input(gpio_num_t gpio) { gpio_reset_pin(gpio); }
 void disable_inputs(void) {
   for (int i = 0; i < DIP_SWITCH_PINS_COUNT; i++) {
     disable_input(DIP_SWITCH_PINS[i]);
+    gpio_reset_pin(DIP_SWITCH_PINS[i]);
   }
   disable_input(RESET_BLE_PIN);
+  gpio_reset_pin(RESET_BLE_PIN);
   disable_input(TARE_SCALE_PIN);
+  gpio_reset_pin(TARE_SCALE_PIN);
   disable_input(DISABLE_DEEP_SLEEP_PIN);
+  gpio_reset_pin(DISABLE_DEEP_SLEEP_PIN);
+
+  gpio_reset_pin(ONE_WIRE_PIN);
+  gpio_set_direction(ONE_WIRE_PIN, GPIO_MODE_INPUT);
+  gpio_set_pull_mode(ONE_WIRE_PIN, GPIO_PULLUP_ONLY);
+
+  gpio_reset_pin(SDA_PIN);
+  gpio_reset_pin(SCL_PIN);
 }
 
 uint8_t get_UID(void) { return UID; }

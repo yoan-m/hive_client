@@ -14,12 +14,12 @@
 #define FALLBACK_SLEEP_US (30LL * 60 * 1000000LL)
 #define NORMAL_CHANNEL 1
 
-typedef struct {
+typedef struct __attribute__((packed)) {
   uint8_t type;
   uint8_t uid;
-  float weight;
-  float temperature;
-  float battery;
+  int16_t weight_x10;
+  int16_t temp_x10;
+  uint16_t battery_mv;
 } client_msg_t;
 
 typedef struct {
@@ -28,11 +28,12 @@ typedef struct {
 } sync_msg_t;
 
 void init_wifi(void);
-void init_espnow(int64_t* sleep_us);
+void init_espnow();
 void on_data_recv(const esp_now_recv_info_t* info, const uint8_t* data,
                   int len);
 void on_data_sent(const esp_now_send_info_t* info,
                   esp_now_send_status_t status);
 void wait_sync();
-void send_data_tdma(client_msg_t* msg);
+void send_data_tdma(uint8_t uid, int16_t weight_x10, int16_t temp_x10,
+                    uint16_t battery_mv);
 #endif  // ESPNOW_H

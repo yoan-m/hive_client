@@ -31,9 +31,8 @@ void init_wifi(void) {
   ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
   ESP_ERROR_CHECK(esp_wifi_start());
 
-  ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
   ESP_ERROR_CHECK(esp_wifi_set_channel(NORMAL_CHANNEL, WIFI_SECOND_CHAN_NONE));
-
+  ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
   uint8_t mac[6];
   esp_wifi_get_mac(WIFI_IF_STA, mac);
   ESP_LOGI(TAG, "MAC %02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2],
@@ -71,8 +70,7 @@ void on_data_recv(const esp_now_recv_info_t* info, const uint8_t* data,
   sync_received = true;
 }
 
-void init_espnow(int64_t* sleep_us_ptr) {
-  sleep_us = *sleep_us_ptr;
+void init_espnow() {
   ESP_LOGI(TAG, "Initialisation ESP-NOW");
   ESP_ERROR_CHECK(esp_now_init());
   ESP_ERROR_CHECK(esp_now_register_send_cb(on_data_sent));
@@ -84,7 +82,15 @@ void init_espnow(int64_t* sleep_us_ptr) {
       .channel = NORMAL_CHANNEL,
       .ifidx = WIFI_IF_STA,
       .encrypt = false};
-  ESP_ERROR_CHECK(esp_now_add_peer(&bcast));
+  esp_err_t err = esp_now_add_peer(&bcast);
+  if (err == ESP_OK) {
+    ESP_LOGI(TAG, "Peer broadcast enregistré");
+  } else if (err == ESP_ERR_ESPNOW_EXIST) {
+    ESP_LOGI(TAG, "Peer broadcast existait déjà");
+  } else {
+    ESP_LOGE(TAG, "Erreur enregistrement peer broadcast: %s",
+             esp_err_to_name(err));
+  }
 }
 
 void wait_sync() {
@@ -99,40 +105,22 @@ void wait_sync() {
   vTaskDelay(pdMS_TO_TICKS(slot * SLOT_MS));
 }
 
-void send_data_tdma(client_msg_t* msg) {
+void send_data_tdma(uint8_t uid, int16_t weight_x10, int16_t temp_x10,
+                    uint16_t battery_mv) {
   ESP_LOGI(TAG, "Envoi des données en TDMA...");
 
-  // --- Vérifie que le serveur est enregistré comme peer ---
-  if (!esp_now_is_peer_exist(server_mac)) {
-    esp_now_peer_info_t peer = {0};
-    memcpy(peer.peer_addr, server_mac, ESP_NOW_ETH_ALEN);
-    peer.channel = NORMAL_CHANNEL;
-    peer.ifidx = WIFI_IF_STA;
-    peer.encrypt = false;
-
-    esp_err_t add_err = esp_now_add_peer(&peer);
-    if (add_err == ESP_OK) {
-      ESP_LOGI(TAG, "Peer serveur ajouté avec succès");
-    } else if (add_err == ESP_ERR_ESPNOW_EXIST) {
-      ESP_LOGI(TAG, "Peer serveur existait déjà");
-    } else {
-      ESP_LOGE(TAG, "Erreur ajout peer serveur: %s", esp_err_to_name(add_err));
-    }
-
-    // Pause courte pour que le peer soit actif (esp32-C3)
-    vTaskDelay(pdMS_TO_TICKS(20));
-  }
+  client_msg_t msg = {.type = MSG_DATA,
+                      .uid = uid,
+                      .weight_x10 = weight_x10,
+                      .temp_x10 = temp_x10,
+                      .battery_mv = battery_mv};
 
   // --- Envoi broadcast pour prévenir les autres clients ---
-  sync_msg_t sync = {.type = MSG_SYNC, .cycle_us = 42};
+  esp_err_t err =
+      esp_now_send(broadcast_mac, (const uint8_t*)&msg, sizeof(msg));
+  ESP_LOGI(TAG, "Broadcast esp_now_send returned: %s %d", esp_err_to_name(err),
+           sizeof(msg));
+  /*sync_msg_t sync = {.type = MSG_SYNC, .cycle_us = SYNC_TIMEOUT_MS};
   esp_err_t err = esp_now_send(broadcast_mac, (uint8_t*)&sync, sizeof(sync));
-  ESP_LOGI(TAG, "Broadcast esp_now_send returned: %s", esp_err_to_name(err));
-
-  // --- Pause pour laisser le broadcast passer ---
-  vTaskDelay(pdMS_TO_TICKS(50));
-
-  // --- Envoi unicast au serveur ---
-  esp_err_t err2 = esp_now_send(server_mac, (uint8_t*)&sync, sizeof(sync));
-  ESP_LOGI(TAG, "Unicast serveur esp_now_send returned: %s",
-           esp_err_to_name(err2));
+  ESP_LOGI(TAG, "esp_now_send returned: %s", esp_err_to_name(err));*/
 }

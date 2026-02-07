@@ -22,12 +22,10 @@ static int64_t sleep_us = FALLBACK_SLEEP_US;
  * ========================= */
 
 void app_main(void) {
+  init_nvs();
+
   init_sensors();
 
-  init_nvs();
-  nvs_flash_init();
-  init_wifi();
-  init_espnow(&sleep_us);
   init_scale();
 
   if (is_tare_scale_pressed()) {
@@ -37,24 +35,30 @@ void app_main(void) {
     ESP_LOGI(TAG, "Tare scale not pressed");
   }
 
-  client_msg_t msg = {.uid = get_UID(),
-                      .weight = read_weight(),
-                      .temperature = read_temperature(),
-                      .battery = read_voltage()};
+  uint8_t uid = get_UID();
+  uint16_t battery_mv = read_voltage();
+  float temp = read_temperature();
+  float weight = read_weight();
+  disable_inputs();
 
-  // wait_sync();
-  vTaskDelay(pdMS_TO_TICKS(1000));
-  send_data_tdma(&msg);
-  while (true) {
+  ESP_LOGI(TAG, "🚀 Démarrage serveur ESP-NOW...");
+  init_wifi();
+  vTaskDelay(pdMS_TO_TICKS(100));
+  init_espnow();
+  vTaskDelay(pdMS_TO_TICKS(500));
+  ESP_LOGI(TAG, "✅ Serveur prêt à recevoir les messages !");
+
+  wait_sync();
+  send_data_tdma(uid, weight * 10, temp * 10, battery_mv);
+  /*while (true) {
     vTaskDelay(pdMS_TO_TICKS(1000));
-  }
-  /*if (is_deep_sleep_enabled()) {
+  }*/
+  if (is_deep_sleep_enabled()) {
     ESP_LOGI(TAG, "Dodo pour %lld us", sleep_us);
 
-    disable_inputs();
     esp_sleep_enable_timer_wakeup(sleep_us);
     esp_deep_sleep_start();
   } else {
     ESP_LOGI(TAG, "Deep sleep désactivé");
-  }*/
+  }
 }
