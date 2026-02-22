@@ -5,6 +5,8 @@
 #include <stdio.h>
 
 #include "esp_now.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 #define MSG_SYNC 1
 #define MSG_DATA 2
@@ -20,6 +22,9 @@ typedef struct __attribute__((packed)) {
   int16_t weight_x10;
   int16_t temp_x10;
   uint16_t battery_mv;
+  int16_t station_temp_x10;
+  uint16_t station_humidity_x100;
+  uint16_t station_battery_mv;
 } client_msg_t;
 
 typedef struct {

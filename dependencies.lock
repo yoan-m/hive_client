@@ -124,5 +124,5 @@ direct_dependencies:
 - espressif/esp-now
 - idf
 manifest_hash: 54f70bd662c63bbc502360921b59a066f4e62632a5e4ab139e2b63b08dfa50c0
-target: esp32c3
+target: esp32
 version: 2.0.0

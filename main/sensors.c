@@ -9,6 +9,7 @@
 #include "esp_sleep.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "gpioconfig.h"
 #include "onewire_bus.h"
 #include "scale.h"
 #include "sdkconfig.h"
@@ -16,23 +17,6 @@
 static const char* TAG = "SENSORS";
 
 uint8_t UID = 0x00;
-/* =========================
- * GPIO DEFINITIONS
- * ========================= */
-/*
-#define LED_BUILTIN GPIO_NUM_8
-#define DISABLE_DEEP_SLEEP_PIN GPIO_NUM_3
-#define RESET_BLE_PIN GPIO_NUM_4
-#define TARE_SCALE_PIN GPIO_NUM_5
-
-#define POWER_ADC_PIN GPIO_NUM_6
-#define VBUS_ADC_CHANNEL ADC_CHANNEL_2 // adapte à ton schéma
-
-#define DIP_SWITCH_PINS_COUNT 3
-static const gpio_num_t dip_pins[DIP_SWITCH_PINS_COUNT] = {
-    GPIO_NUM_10,
-    GPIO_NUM_11,
-    GPIO_NUM_12};*/
 
 /* =========================
  * ADC
@@ -50,9 +34,13 @@ static adc_cali_handle_t cali_handle;
 
 static void blink(void) {
   for (int i = 0; i < 2; i++) {
+    gpio_set_level(LED_BUILTIN, 1);
+    vTaskDelay(pdMS_TO_TICKS(200));
     gpio_set_level(LED_BUILTIN, 0);
     vTaskDelay(pdMS_TO_TICKS(200));
     gpio_set_level(LED_BUILTIN, 1);
+    vTaskDelay(pdMS_TO_TICKS(200));
+    gpio_set_level(LED_BUILTIN, 0);
     vTaskDelay(pdMS_TO_TICKS(200));
   }
 }
@@ -119,7 +107,7 @@ void init_led_pin(void) {
       .mode = GPIO_MODE_OUTPUT,
   };
   gpio_config(&led_cfg);
-  gpio_set_level(LED_BUILTIN, 1);
+  gpio_set_level(LED_BUILTIN, 0);
   blink();
   ESP_LOGI(TAG, "LED pin initialized");
 }
@@ -147,13 +135,13 @@ void init_adc(void) {
       adc_oneshot_config_channel(adc_handle, ADC_CHANNEL, &chan_cfg));
 
   // -------- Calibration --------
-  adc_cali_curve_fitting_config_t cali_cfg = {
+  adc_cali_line_fitting_config_t cali_cfg = {
       .atten = ADC_ATTEN,
       .bitwidth = ADC_BITWIDTH_DEFAULT,
       .unit_id = ADC_UNIT_ID,
   };
-  ESP_ERROR_CHECK(
-      adc_cali_create_scheme_curve_fitting(&cali_cfg, &cali_handle));
+
+  ESP_ERROR_CHECK(adc_cali_create_scheme_line_fitting(&cali_cfg, &cali_handle));
 
   ESP_LOGI(TAG, "ADC prêt");
 }
@@ -166,7 +154,7 @@ void init_buttons(void) {
       .pull_down_en = GPIO_PULLDOWN_DISABLE,
   };
 
-  in_pullup.pin_bit_mask = (1ULL << RESET_BLE_PIN) | (1ULL << TARE_SCALE_PIN);
+  in_pullup.pin_bit_mask = (1ULL << TARE_SCALE_PIN);
   gpio_config(&in_pullup);
   ESP_LOGI(TAG, "Buttons initialized");
 }
@@ -189,8 +177,8 @@ void init_dip_switches(void) {
 }
 
 void init_sensors(void) {
+  esp_log_level_set(TAG, ESP_LOG_INFO);
   ESP_LOGI(TAG, "Initialisation des capteurs...");
-
   init_deep_sleep_pin();
 
   init_led_pin();
@@ -228,12 +216,15 @@ float read_temperature(void) {
 }
 
 bool is_deep_sleep_enabled(void) {
-  return gpio_get_level(DISABLE_DEEP_SLEEP_PIN) == 1;
+  // ESP_LOGI(TAG, "Deep sleep: %d", gpio_get_level(DISABLE_DEEP_SLEEP_PIN) ==
+  // 0);
+  return gpio_get_level(DISABLE_DEEP_SLEEP_PIN) == 0;
 }
 
-bool is_reset_ble_pressed(void) { return gpio_get_level(RESET_BLE_PIN) == 0; }
-
-bool is_tare_scale_pressed(void) { return gpio_get_level(TARE_SCALE_PIN) == 0; }
+bool is_tare_scale_pressed(void) {
+  ESP_LOGI(TAG, "Tare scale: %d", gpio_get_level(TARE_SCALE_PIN) == 0);
+  return gpio_get_level(TARE_SCALE_PIN) == 0;
+}
 
 float read_voltage(void) {
   gpio_set_level(POWER_ADC_PIN, 1);
@@ -247,7 +238,7 @@ float read_voltage(void) {
 
   int voltage = raw * (3.3 / 4095.0) * 1000;  // Convertir en tension ADC
   int batteryVoltage =
-      voltage / (680.0 / (100.0 + 680.0));  // Ajustement avec le pont diviseur
+      voltage / (100.0 / (100.0 + 100.0));  // Ajustement avec le pont diviseur
   ESP_LOGI(TAG, "RAW=%d  Voltage=%d mV RealVoltage=%d mV batteryVoltage=%d mV",
            raw, mv, voltage, batteryVoltage);
 
@@ -263,6 +254,8 @@ uint8_t read_dip_switch(void) {
     }
   }
   UID = id + 1;
+
+  ESP_LOGI(TAG, "UID: %d", UID);
   return UID;
 }
 
@@ -272,20 +265,32 @@ void disable_inputs(void) {
   for (int i = 0; i < DIP_SWITCH_PINS_COUNT; i++) {
     disable_input(DIP_SWITCH_PINS[i]);
     gpio_reset_pin(DIP_SWITCH_PINS[i]);
+    gpio_set_direction(DIP_SWITCH_PINS[i], GPIO_MODE_INPUT);
+    gpio_set_pull_mode(DIP_SWITCH_PINS[i], GPIO_FLOATING);
   }
-  disable_input(RESET_BLE_PIN);
-  gpio_reset_pin(RESET_BLE_PIN);
+
+  // gpio_set_level(POWER_SENSORS_PIN, 0);  // coupe capteurs
+
   disable_input(TARE_SCALE_PIN);
   gpio_reset_pin(TARE_SCALE_PIN);
+  gpio_set_direction(TARE_SCALE_PIN, GPIO_MODE_INPUT);
+  gpio_set_pull_mode(TARE_SCALE_PIN, GPIO_FLOATING);
+
   disable_input(DISABLE_DEEP_SLEEP_PIN);
   gpio_reset_pin(DISABLE_DEEP_SLEEP_PIN);
+  gpio_set_direction(DISABLE_DEEP_SLEEP_PIN, GPIO_MODE_INPUT);
+  gpio_set_pull_mode(DISABLE_DEEP_SLEEP_PIN, GPIO_FLOATING);
 
   gpio_reset_pin(ONE_WIRE_PIN);
   gpio_set_direction(ONE_WIRE_PIN, GPIO_MODE_INPUT);
-  gpio_set_pull_mode(ONE_WIRE_PIN, GPIO_PULLUP_ONLY);
+  gpio_set_pull_mode(ONE_WIRE_PIN, GPIO_FLOATING);
 
   gpio_reset_pin(SDA_PIN);
   gpio_reset_pin(SCL_PIN);
+  gpio_set_direction(SDA_PIN, GPIO_MODE_INPUT);
+  gpio_set_pull_mode(SDA_PIN, GPIO_FLOATING);
+  gpio_set_direction(SCL_PIN, GPIO_MODE_INPUT);
+  gpio_set_pull_mode(SCL_PIN, GPIO_FLOATING);
 }
 
 uint8_t get_UID(void) { return UID; }

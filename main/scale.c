@@ -3,6 +3,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "gpioconfig.h"
 #include "hx711.h"
 #include "nvs.h"
 
@@ -19,8 +20,9 @@ int32_t offset;
 float scale_factor;
 
 void init_scale(void) {
+  esp_log_level_set(TAG, ESP_LOG_INFO);
   ESP_LOGI(TAG, "Initialisation balance HX711");
-
+  return;
   ESP_ERROR_CHECK(hx711_init(&scale));
   bool ok = load_calibration(&offset, &scale_factor);
   if (!ok || is_tare_scale_pressed()) {
@@ -36,10 +38,30 @@ void init_scale(void) {
 }
 
 float read_weight(void) {
-  int32_t raw;
-  hx711_read_average(&scale, 10, &raw);
-  float poids = (float)(raw - offset) / scale_factor;
-  ESP_LOGI(TAG, "Poids mesuré : %.3f kg", poids);
+  int32_t raw = 0;
+  esp_err_t err;
+
+  // Vérifier que le capteur est prêt
+  if (!is_scale_ready()) {
+    ESP_LOGW(TAG, "HX711 non prêt");
+    return 0.0f;
+  }
+
+  err = hx711_read_average(&scale, 10, &raw);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Erreur lecture HX711");
+    return 0.0f;
+  }
+
+  if (scale_factor == 0.0f) {
+    ESP_LOGE(TAG, "scale_factor invalide (0)");
+    return 0.0f;
+  }
+
+  float poids = ((float)(raw - offset)) / scale_factor;
+
+  ESP_LOGI(TAG, "Raw: %ld | Poids: %.3f kg", raw, poids);
+
   return poids;
 }
 

@@ -21,6 +21,7 @@ static uint8_t server_mac[ESP_NOW_ETH_ALEN] = {0x7C, 0x2C, 0x67,
 uint8_t broadcast_mac[ESP_NOW_ETH_ALEN] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 void init_wifi(void) {
+  esp_log_level_set(TAG, ESP_LOG_INFO);
   ESP_LOGI(TAG, "Initialisation WiFi...");
   ESP_ERROR_CHECK(nvs_flash_init());
   ESP_ERROR_CHECK(esp_netif_init());
@@ -43,6 +44,15 @@ void on_data_sent(const esp_now_send_info_t* info,
                   esp_now_send_status_t status) {
   ESP_LOGI(TAG, "Message envoyé: %s",
            status == ESP_NOW_SEND_SUCCESS ? "OK" : "FAIL");
+
+  /*if (is_deep_sleep_enabled()) {
+    ESP_LOGI(TAG, "Dodo pour %lld us", sleep_us);
+
+    esp_sleep_enable_timer_wakeup(sleep_us);
+    esp_deep_sleep_start();
+  } else {
+    ESP_LOGI(TAG, "Deep sleep désactivé");
+  }*/
 }
 
 void on_data_recv(const esp_now_recv_info_t* info, const uint8_t* data,
@@ -113,7 +123,10 @@ void send_data_tdma(uint8_t uid, int16_t weight_x10, int16_t temp_x10,
                       .uid = uid,
                       .weight_x10 = weight_x10,
                       .temp_x10 = temp_x10,
-                      .battery_mv = battery_mv};
+                      .battery_mv = battery_mv,
+                      .station_temp_x10 = 0,
+                      .station_humidity_x100 = 0,
+                      .station_battery_mv = 0};
 
   // --- Envoi broadcast pour prévenir les autres clients ---
   esp_err_t err =
